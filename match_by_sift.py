@@ -20,24 +20,35 @@ def gen_label_feature(img):
 
 
 def match_SIFT(desc_s, desc_t):
-    RATIO = 0.8
-    # Match descriptor and obtain two best matches
-    bf = cv2.BFMatcher()
-    matches = bf.knnMatch(desc_s, desc_t, k=2)
+    #RATIO = 0.8
+    ## Match descriptor and obtain two best matches
+    #bf = cv2.BFMatcher()
+    #matches = bf.knnMatch(desc_s, desc_t, k=2)
 
-    # Initialize output variable
+    ## Initialize output variable
+    #fit_pos = np.array([], dtype=np.int32).reshape((0, 2))
+
+    #matches_num = len(matches)
+    #for i in range(matches_num):
+    #    # Obtain the good match if the ration id smaller than 0.8
+    #    if matches[i][0].distance <= RATIO * matches[i][1].distance:
+    #        temp = np.array([matches[i][0].queryIdx,
+    #                         matches[i][0].trainIdx])
+    #        # Put points index of good match
+    #        fit_pos = np.vstack((fit_pos, temp))
+    #return fit_pos
+
+    bf = cv2.BFMatcher(crossCheck=True)
+    matches = bf.match(desc_s,desc_t)
     fit_pos = np.array([], dtype=np.int32).reshape((0, 2))
-
     matches_num = len(matches)
     for i in range(matches_num):
-        # Obtain the good match if the ration id smaller than 0.8
-        if matches[i][0].distance <= RATIO * matches[i][1].distance:
-            temp = np.array([matches[i][0].queryIdx,
-                             matches[i][0].trainIdx])
-            # Put points index of good match
+            temp = np.array([matches[i].queryIdx,
+                             matches[i].trainIdx])
             fit_pos = np.vstack((fit_pos, temp))
 
     return fit_pos
+
 
 def split_to_frames(video):
     cap = cv2.VideoCapture(video)
@@ -60,16 +71,32 @@ def split_to_frames(video):
 
 def gen_video_from_frames(path, video):
     fourcc = cv2.VideoWriter_fourcc('M','J','P','G')
+    #fourcc = cv2.VideoWriter_fourcc('X','2','6','4')
+    #fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    #video = cv2.VideoWriter( video, fourcc, 30.0, (1280,720))
     video = cv2.VideoWriter( video, fourcc, 30.0, (1280,720))
+    
+    frame = cv2.imread('./logo.jpg')
+    frame = cv2.resize(frame, (1280,720))
+    print (frame.shape)
+    i = 0
+    while True:
+        video.write(frame)
+        i += 1
+        if i == 60:
+            break
 
     filelist = os.listdir(path)
     print ('to generate video from ', len(filelist))
     i = -1
-    for item in filelist:
+    #for item in filelist:
+    while True:
             i +=1
+            if i == 100000:
+                break
             print (i)
-            #if i<1800 or i > 2000:
-                #continue
+            if i<start_frame or i > end_frame:
+                continue
             item = 'frame_{}.jpg'.format(i)
             frame = cv2.imread(path+item)
             if frame is None:
@@ -82,6 +109,73 @@ def gen_video_from_frames(path, video):
             
             video.write(frame)
     video.release()
+
+#step1+2
+#start_frame = 1700
+#end_frame = 2100
+##step3
+#start_frame = 2400
+#end_frame = 2900
+#
+##step4+5
+#start_frame = 3300
+#end_frame = 3800
+#
+##step6
+#start_frame = 4300
+#end_frame = 4500
+#
+##step7
+#start_frame = 4700
+#end_frame = 4920
+#
+#step8
+#start_frame = 5150
+#end_frame = 5300
+#
+##step9-1
+#start_frame = 5500
+#end_frame = 5750
+#
+#step9-2
+#start_frame = 5800
+#end_frame = 5900
+#
+##step9-3
+#start_frame = 5950
+#end_frame = 6050
+#
+##step10
+#start_frame = 6200
+#end_frame = 6450
+#
+##step11
+#start_frame = 6600
+#end_frame = 6800
+#
+##step12
+#start_frame = 7300
+#end_frame = 7500
+#
+##step13
+#start_frame = 7800
+#end_frame = 8350
+#
+##step14
+#start_frame = 8400
+#end_frame = 8850
+
+#test misunderstanding
+#start_frame = 300
+#end_frame = 400
+
+#demo
+start_frame = 1479
+end_frame = 9020
+#start_frame = 7000
+#end_frame = 8000
+
+FRAME_DIR = './matched/'
 
 def match_by_feature(src_path, label_path):
     feature_dict = {}
@@ -98,12 +192,10 @@ def match_by_feature(src_path, label_path):
     time_window_top2 = {}
     for index in range(len(filelist)):
         print (index)
-        #if index<1600:
-        #if index<1800:
-            #continue
-        #if index>3000:
-        #if index>2000:
-            #break
+        if index<start_frame:
+            continue
+        if index>end_frame:
+            break
         item = 'frame_{}.jpg'.format(index)
         img = cv2.imread('./frames/'+item)
         original_img = img.copy()
@@ -113,16 +205,28 @@ def match_by_feature(src_path, label_path):
         matched_rank_list = []
         matched_name = None
         max_bound_list = []
+        total_start = time.time()
         for name in feature_dict:
+            start = time.time()
+            print (name)
+            #print('feature count to check', desc.shape, feature_dict[name][1].shape)
             fit_pos = match_SIFT(desc, feature_dict[name][1])
             kp_src = kp[:,fit_pos[:,0]]
             kp_label = feature_dict[name][0][:,fit_pos[:,1]]
+            end = time.time()
+            #print ('match cost: ', end-start)
+            start = time.time()
 
             if len(kp_src[0]) <= 3 or len(kp_label[0]) <=3:
                 continue;
 
+            print('point count to check', kp_src.shape, kp_label.shape)
             _, _, inliers, bound_point_list = Ransac(3, 1).ransac_fit(kp_src, kp_label)
+            end = time.time()
+            #print ('ransac time cost: ', end-start)
+            start = time.time()
             if len(inliers[0]) == 0:
+                print ('ransac can not find')
                 continue
             else:
                 print ('ransac pint count is: ', len(inliers[0]))
@@ -186,6 +290,8 @@ def match_by_feature(src_path, label_path):
                 max_mathed_kp = kp_src
                 matched_name = name
                 max_bound_list = bound_list
+            end = time.time()
+            #print ('left time cost: ', end-start)
         
         matched_rank_list = sorted(matched_rank_list, key=lambda item:item[1], reverse=True)
         if len(matched_rank_list) >= 4:
@@ -193,25 +299,14 @@ def match_by_feature(src_path, label_path):
         else:
             matched_rank_list += [['None',0]]*(4-len(matched_rank_list))
         all_matched_dict[index] = matched_rank_list
-        if len(max_mathed_kp) == 0:
-            print ('feature point count is: 0')
-        else:
-            print ('feature point count is: ',len(max_mathed_kp[0]))
-            print ('feature name is: ', matched_name[:-4])
-            if len(max_mathed_kp[0]) >= 3:
-                for i in range(len(max_mathed_kp[0])):
-                    cv2.circle(original_img, (int(max_mathed_kp[0][i]), int(max_mathed_kp[1][i])), 10, (0,0,255), 3)      
-                for i in range(len(max_mathed_kp[0])):
-                    cv2.circle(original_img, (int(max_mathed_kp[0][i]), int(max_mathed_kp[1][i])), 10, (0,0,255), 3)      
-                font=cv2.FONT_HERSHEY_SIMPLEX
-                cv2.putText(original_img, matched_name[:-4]+':'+str(float(len(max_mathed_kp[0]))/len(kp[0]))[:5]
-                                    +'('+str(len(max_mathed_kp[0]))+')', (30,30),font,1, (0,0,255), 3)
-                bound_dict[index] = bound_list
-                for b in max_bound_list:
-                    cv2.rectangle(original_img,(int(b[0]),int(b[2])), (int(b[1]),int(b[3])), (0,255,0), 3)
+
 
         top1 = matched_rank_list[0]
+        if '.' in top1[0]:
+            top1[0] = top1[0][:top1[0].index('.')]
         top2 = matched_rank_list[1]
+        if '.' in top2[0]:
+            top2[0] = top2[0][:top2[0].index('.')]
         time_window_top2[index] = [top1,top2]
         print (time_window_top2)
         distance = 30
@@ -220,30 +315,60 @@ def match_by_feature(src_path, label_path):
         print ('after pop : ',time_window_top2)
         label = []
         for k in time_window_top2:
-            label.append(time_window_top2[k][0][0])
-            label.append(time_window_top2[k][1][0])
-        most_common = collections.Counter(label).most_common(1)[0][0]
+            top1 = time_window_top2[k][0][0]
+            if top1 != 'None':
+                label.append(top1)
+            #top2 = time_window_top2[k][1][0]
+            #if top2 != 'None':
+            #    label.append(top2)
+        if len(label) == 0:
+            most_common = 'None'
+        else:
+            most_common = collections.Counter(label).most_common(1)[0][0]
         #print ('label', label)
-        #print ('most common:', most_common)
+        print ('most common:', most_common)
         sum_most_common = 0
         total = 0
+        common_count = 0
         for k in time_window_top2:
             total += time_window_top2[k][0][1]
-            total += time_window_top2[k][1][1]
+            #total += time_window_top2[k][1][1]
             if time_window_top2[k][0][0] == most_common:
                 sum_most_common += time_window_top2[k][0][1]
-            if time_window_top2[k][1][0] == most_common:
-                sum_most_common += time_window_top2[k][1][1]
-        print (sum_most_common, total, float(sum_most_common)/(total+1e-6))     
-        if len(time_window_top2) == distance and most_common != 'None' and float(sum_most_common)/(total+1e-6) > 0.7:
+                common_count += 1
+            #if time_window_top2[k][1][0] == most_common:
+            #    sum_most_common += time_window_top2[k][1][1]
+        print (most_common, 'is ', sum_most_common, total, float(sum_most_common)/(total+1e-6))     
+        font=cv2.FONT_HERSHEY_SIMPLEX
+        cv2.putText(original_img, 'frame '+ str(index), (30,680),font,1, (0,0,255), 3)
+        if len(time_window_top2) == distance and float(sum_most_common)/(total+1e-6) > 0.75 and sum_most_common > 50 and common_count > distance*0.5:
             print ('recongize as:', most_common)
+            font=cv2.FONT_HERSHEY_SIMPLEX
             cv2.putText(original_img, most_common,  (1000,680),font,2, (0,0,255), 10)
 
-        print (original_img.shape)
-        print ('./matched/'+item)
-        cv2.imwrite('./matched/'+item, original_img)
+            if len(max_mathed_kp) == 0:
+                print ('feature point count is: 0')
+            else:
+                print ('feature point count is: ',len(max_mathed_kp[0]))
+                print ('feature name is: ', matched_name[:-4])
+                if len(max_mathed_kp[0]) >= 3:
+                    for i in range(len(max_mathed_kp[0])):
+                        cv2.circle(original_img, (int(max_mathed_kp[0][i]), int(max_mathed_kp[1][i])), 10, (0,0,255), 3)      
+                    for i in range(len(max_mathed_kp[0])):
+                        cv2.circle(original_img, (int(max_mathed_kp[0][i]), int(max_mathed_kp[1][i])), 10, (0,0,255), 3)      
+                    font=cv2.FONT_HERSHEY_SIMPLEX
+                    cv2.putText(original_img, matched_name[:-4]+':'+str(float(len(max_mathed_kp[0]))/len(kp[0]))[:5]
+                                        +'('+str(len(max_mathed_kp[0]))+')', (30,30),font,1, (0,0,255), 3)
+                    bound_dict[index] = bound_list
+                    for b in max_bound_list:
+                        cv2.rectangle(original_img,(int(b[0]),int(b[2])), (int(b[1]),int(b[3])), (0,255,0), 3)
 
-    f = open('./rank.txt', 'w')
+        print (FRAME_DIR+item)
+        cv2.imwrite(FRAME_DIR+item, original_img)
+        total_end = time.time()
+        print ('time cost is: ',total_end - total_start)
+
+    f = open('./'+str(start_frame)+'.rank.txt', 'w')
     for item in all_matched_dict:
         value = all_matched_dict[item]
         f.write(str(item)+','+str(value[0][0])+','+str(value[0][1])
@@ -252,12 +377,12 @@ def match_by_feature(src_path, label_path):
                          +','+str(value[3][0])+','+str(value[3][1])+'\n')
     f.close()
 
-    f = open('./bound.txt', 'w')
-    for item in bound_dict:
-        value = all_matched_dict[item]
-        f.write(str(item)+','+str(value[0])+','+str(value[1])
-                         +','+str(value[2])+','+str(value[3])+'\n')
-    f.close()
+    #f = open('./bound.txt', 'w')
+    #for item in bound_dict:
+        #value = all_matched_dict[item]
+        #f.write(str(item)+','+str(value[0])+','+str(value[1])
+                         #+','+str(value[2])+','+str(value[3])+'\n')
+    #f.close()
 
 def test_by_label(src, label):
     img_src = cv2.imread(src)
@@ -268,11 +393,30 @@ def test_by_label(src, label):
     kp_src, desc_src = gen_label_feature(img_src)   
     kp_label, desc_label = gen_label_feature(img_label)   
     fit_pos = match_SIFT(desc_src, desc_label)
-    print (fit_pos)
+    print ('fitpos',fit_pos)
     kp_src = kp_src[:,fit_pos[:,0]]
     kp_label = kp_label[:,fit_pos[:,1]]
 
-    _, _, inliers = Ransac(3, 1).ransac_fit(kp_src, kp_label)
+    src_bound_list =[]
+    label_bound_list =[]
+    _, _, inliers, bound_point_list = Ransac(3, 1).ransac_fit(kp_src, kp_label)
+
+    for b_p in bound_point_list:
+        arr_p = kp_src[:,b_p]
+        #print (len(arr_p[0][0]))
+        bound = (min(arr_p[0][0]), max(arr_p[0][0]), min(arr_p[1][0]), max(arr_p[1][0]))
+        src_bound_list.append(bound)
+
+    for b_p in bound_point_list:
+        arr_p = kp_label[:,b_p]
+        #print (len(arr_p[0][0]))
+        #print ('index', b_p)
+        #for x in zip(arr_p[0][0],arr_p[1][0]):
+        #    print (x)
+        #print ('point',(arr_p[0][0]))
+        bound = (min(arr_p[0][0]), max(arr_p[0][0]), min(arr_p[1][0]), max(arr_p[1][0]))
+        label_bound_list.append(bound)
+
     kp_src = kp_src[:, inliers[0]]
     kp_label = kp_label[:, inliers[0]]
 
@@ -286,26 +430,31 @@ def test_by_label(src, label):
             valid.append(i)
             src_list.append(p1)
             label_list.append(p2)
+
     kp_src = kp_src[:,valid]
     kp_label = kp_label[:,valid]
             
     for i in range(len(kp_src[0])):
-        cv2.circle(img_src_ori, (int(kp_src[0][i]), int(kp_src[1][i])), 10, (0,0,255), 0)      
+        cv2.circle(img_src_ori, (int(kp_src[0][i]), int(kp_src[1][i])), 10, (0,0,255), 2)      
         font=cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(img_src_ori, str(i), (int(kp_src[0][i]),int(kp_src[1][i])),font,0.5, (0,0,255))
+        cv2.putText(img_src_ori, str(i), (int(kp_src[0][i]),int(kp_src[1][i])),font,1, (0,0,255), 2)
+    for b in src_bound_list:
+        cv2.rectangle(img_src_ori,(int(b[0]),int(b[2])), (int(b[1]),int(b[3])), (0,255,0), 2)
     cv2.imwrite('./test_src.jpg', img_src_ori)
 
     print (kp_label)
     print (kp_src)
     for i in range(len(kp_label[0])):
-        cv2.circle(img_label_ori, (int(kp_label[0][i]), int(kp_label[1][i])), 10, (0,0,255), 0)      
+        cv2.circle(img_label_ori, (int(kp_label[0][i]), int(kp_label[1][i])), 10, (0,0,255), 2)      
         font=cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(img_label_ori, str(i), (int(kp_label[0][i]),int(kp_label[1][i])),font,0.5, (0,0,255))
+        cv2.putText(img_label_ori, str(i), (int(kp_label[0][i]),int(kp_label[1][i])),font,1, (0,0,255), 2)
+    for b in label_bound_list:
+        cv2.rectangle(img_label_ori,(int(b[0]),int(b[2])), (int(b[1]),int(b[3])), (0,255,0), 2)
     cv2.imwrite('./test_label.jpg', img_label_ori)
 
 
-split_to_frames('./data/VID_20190225_145649.mp4')
-match_by_feature('./frames/', './label/')
-gen_video_from_frames('./matched/', './result/detect.avi')
-#test_by_label('./frames/frame_23.jpg', './label/step_7.jpg')
+#split_to_frames('./data/VID_20190225_145649.mp4')
+#match_by_feature('./frames/', './label/')
+gen_video_from_frames(FRAME_DIR, './result/'+str(start_frame)+'_detect.avi')
+#test_by_label('./frames/frame_3815.jpg', './label/step_14.jpg')
 

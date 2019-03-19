@@ -9,7 +9,8 @@ from affine_transform import Affine
 
 
 # The number of iterations in RANSAC
-ITER_NUM = 2000
+#ITER_NUM = 2000
+ITER_NUM = 1000
 
 
 class Ransac():
@@ -104,6 +105,8 @@ class Ransac():
         for i in range(ITER_NUM):
             # Randomly generate indices of points correspondences
             idx = np.random.randint(0, pts_s.shape[1], (self.K, 1))
+            if len(np.unique(idx)) < self.K:
+                continue
 
             # Estimate affine transformation by these points
             A_tmp, t_tmp = af.estimate_affine(pts_s[:, idx], pts_t[:, idx])
