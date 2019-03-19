@@ -111,8 +111,9 @@ def gen_video_from_frames(path, video):
     video.release()
 
 #step1+2
-#start_frame = 1700
+start_frame = 1700
 #end_frame = 2100
+end_frame = 1800
 ##step3
 #start_frame = 2400
 #end_frame = 2900
@@ -170,12 +171,65 @@ def gen_video_from_frames(path, video):
 #end_frame = 400
 
 #demo
-start_frame = 1479
-end_frame = 9020
+#start_frame = 1479
+#end_frame = 9020
 #start_frame = 7000
 #end_frame = 8000
 
 FRAME_DIR = './matched/'
+
+def get_matched_bound(kp_src, bound_point_list):
+    bound_list = []
+    for b_p in bound_point_list:
+        arr_p = kp_src[:,b_p]
+        bound = (min(arr_p[0][0]), max(arr_p[0][0]), min(arr_p[1][0]), max(arr_p[1][0]))
+        bound_list.append(bound)
+    bound_list = sorted(bound_list, key=lambda item:(item[1]-item[0])*(item[3]-item[2]), reverse=True)
+
+    temp_bound_list = []
+    for small in bound_list:
+        b_in = False
+        for big in temp_bound_list:
+            if small[0] >= big[0] and small[1] <= big[1] and small[2] >= big[2] and small[3] <= big[3]:
+                b_in = True
+                break
+        if b_in is False:
+            temp_bound_list.append(small)
+    bound_list = temp_bound_list
+
+    temp_bound_list = []
+    for small in bound_list:
+        b_merged = False
+        for i,big in enumerate(temp_bound_list):
+            inter = (max(small[0], big[0]), min(small[1], big[1]), max(small[2],big[2]), min(small[3], big[3]))
+            area_inter = (inter[1]-inter[0])*(inter[3]-inter[2])
+            small_area = (small[1]-small[0])*(small[3]-small[2])
+            big_area = (big[1]-big[0])*(big[3]-big[2])
+            if small_area * 0.8 < area_inter or big_area * 0.8 < area_inter:
+                b_merged = True
+                temp_bound_list[i] = (min(small[0], big[0]), max(small[1], big[1]), min(small[2],big[2]), max(small[3], big[3]))
+                break
+        if b_merged is False:
+            temp_bound_list.append(small)
+    bound_list = temp_bound_list
+
+    return bound_list
+
+def remove_duplicates(kp_src, kp_label):
+    src_list = []
+    label_list = []
+    valid = []
+    for i in range(len(kp_src[0])):
+        p1 =(kp_src[0][i],kp_src[1][i]) 
+        p2 = (kp_label[0][i],kp_label[1][i])
+        if p1 not in src_list and p2 not in label_list:
+            valid.append(i)
+            src_list.append(p1)
+            label_list.append(p2)
+    kp_src = kp_src[:,valid]
+    kp_label = kp_label[:,valid]
+
+    return kp_src, kp_label
 
 def match_by_feature(src_path, label_path):
     feature_dict = {}
@@ -188,7 +242,6 @@ def match_by_feature(src_path, label_path):
 
     filelist = os.listdir(src_path)
     all_matched_dict = {}
-    bound_dict = {}
     time_window_top2 = {}
     for index in range(len(filelist)):
         print (index)
@@ -231,55 +284,12 @@ def match_by_feature(src_path, label_path):
             else:
                 print ('ransac pint count is: ', len(inliers[0]))
 
-            bound_list = []
-            for b_p in bound_point_list:
-                arr_p = kp_src[:,b_p]
-                bound = (min(arr_p[0][0]), max(arr_p[0][0]), min(arr_p[1][0]), max(arr_p[1][0]))
-                bound_list.append(bound)
-            bound_list = sorted(bound_list, key=lambda item:(item[1]-item[0])*(item[3]-item[2]), reverse=True)
-
-            temp_bound_list = []
-            for small in bound_list:
-                b_in = False
-                for big in temp_bound_list:
-                    if small[0] >= big[0] and small[1] <= big[1] and small[2] >= big[2] and small[3] <= big[3]:
-                        b_in = True
-                        break
-                if b_in is False:
-                    temp_bound_list.append(small)
-            bound_list = temp_bound_list
-
-            temp_bound_list = []
-            for small in bound_list:
-                b_merged = False
-                for i,big in enumerate(temp_bound_list):
-                    inter = (max(small[0], big[0]), min(small[1], big[1]), max(small[2],big[2]), min(small[3], big[3]))
-                    area_inter = (inter[1]-inter[0])*(inter[3]-inter[2])
-                    small_area = (small[1]-small[0])*(small[3]-small[2])
-                    big_area = (big[1]-big[0])*(big[3]-big[2])
-                    if small_area * 0.8 < area_inter or big_area * 0.8 < area_inter:
-                        b_merged = True
-                        temp_bound_list[i] = (min(small[0], big[0]), max(small[1], big[1]), min(small[2],big[2]), max(small[3], big[3]))
-                        break
-                if b_merged is False:
-                    temp_bound_list.append(small)
-            bound_list = temp_bound_list
+            bound_list = get_matched_bound(kp_src, bound_point_list)
 
             kp_src = kp_src[:, inliers[0]]
             kp_label = kp_label[:, inliers[0]]
 
-            src_list = []
-            label_list = []
-            valid = []
-            for i in range(len(kp_src[0])):
-                p1 =(kp_src[0][i],kp_src[1][i]) 
-                p2 = (kp_label[0][i],kp_label[1][i])
-                if p1 not in src_list and p2 not in label_list:
-                    valid.append(i)
-                    src_list.append(p1)
-                    label_list.append(p2)
-            kp_src = kp_src[:,valid]
-            kp_label = kp_label[:,valid]
+            kp_src,kp_label = remove_duplicates(kp_src, kp_label)
 
             print ('after remove duplicate point count is:', len(kp_src[0]))
             if len(kp_src[0]) <= 3:
@@ -291,15 +301,14 @@ def match_by_feature(src_path, label_path):
                 matched_name = name
                 max_bound_list = bound_list
             end = time.time()
-            #print ('left time cost: ', end-start)
-        
+
         matched_rank_list = sorted(matched_rank_list, key=lambda item:item[1], reverse=True)
+        all_matched_dict[index] = matched_rank_list
+
         if len(matched_rank_list) >= 4:
             matched_rank_list = matched_rank_list[:4]
         else:
             matched_rank_list += [['None',0]]*(4-len(matched_rank_list))
-        all_matched_dict[index] = matched_rank_list
-
 
         top1 = matched_rank_list[0]
         if '.' in top1[0]:
@@ -308,66 +317,8 @@ def match_by_feature(src_path, label_path):
         if '.' in top2[0]:
             top2[0] = top2[0][:top2[0].index('.')]
         time_window_top2[index] = [top1,top2]
-        print (time_window_top2)
-        distance = 30
-        if index-distance in time_window_top2:
-            time_window_top2.pop(index-distance)
-        print ('after pop : ',time_window_top2)
-        label = []
-        for k in time_window_top2:
-            top1 = time_window_top2[k][0][0]
-            if top1 != 'None':
-                label.append(top1)
-            #top2 = time_window_top2[k][1][0]
-            #if top2 != 'None':
-            #    label.append(top2)
-        if len(label) == 0:
-            most_common = 'None'
-        else:
-            most_common = collections.Counter(label).most_common(1)[0][0]
-        #print ('label', label)
-        print ('most common:', most_common)
-        sum_most_common = 0
-        total = 0
-        common_count = 0
-        for k in time_window_top2:
-            total += time_window_top2[k][0][1]
-            #total += time_window_top2[k][1][1]
-            if time_window_top2[k][0][0] == most_common:
-                sum_most_common += time_window_top2[k][0][1]
-                common_count += 1
-            #if time_window_top2[k][1][0] == most_common:
-            #    sum_most_common += time_window_top2[k][1][1]
-        print (most_common, 'is ', sum_most_common, total, float(sum_most_common)/(total+1e-6))     
-        font=cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(original_img, 'frame '+ str(index), (30,680),font,1, (0,0,255), 3)
-        if len(time_window_top2) == distance and float(sum_most_common)/(total+1e-6) > 0.75 and sum_most_common > 50 and common_count > distance*0.5:
-            print ('recongize as:', most_common)
-            font=cv2.FONT_HERSHEY_SIMPLEX
-            cv2.putText(original_img, most_common,  (1000,680),font,2, (0,0,255), 10)
 
-            if len(max_mathed_kp) == 0:
-                print ('feature point count is: 0')
-            else:
-                print ('feature point count is: ',len(max_mathed_kp[0]))
-                print ('feature name is: ', matched_name[:-4])
-                if len(max_mathed_kp[0]) >= 3:
-                    for i in range(len(max_mathed_kp[0])):
-                        cv2.circle(original_img, (int(max_mathed_kp[0][i]), int(max_mathed_kp[1][i])), 10, (0,0,255), 3)      
-                    for i in range(len(max_mathed_kp[0])):
-                        cv2.circle(original_img, (int(max_mathed_kp[0][i]), int(max_mathed_kp[1][i])), 10, (0,0,255), 3)      
-                    font=cv2.FONT_HERSHEY_SIMPLEX
-                    cv2.putText(original_img, matched_name[:-4]+':'+str(float(len(max_mathed_kp[0]))/len(kp[0]))[:5]
-                                        +'('+str(len(max_mathed_kp[0]))+')', (30,30),font,1, (0,0,255), 3)
-                    bound_dict[index] = bound_list
-                    for b in max_bound_list:
-                        cv2.rectangle(original_img,(int(b[0]),int(b[2])), (int(b[1]),int(b[3])), (0,255,0), 3)
-
-        print (FRAME_DIR+item)
-        cv2.imwrite(FRAME_DIR+item, original_img)
-        total_end = time.time()
-        print ('time cost is: ',total_end - total_start)
-
+        draw_info_by_matched(item, index, time_window_top2, original_img, max_mathed_kp, kp, max_bound_list, matched_name)
     f = open('./'+str(start_frame)+'.rank.txt', 'w')
     for item in all_matched_dict:
         value = all_matched_dict[item]
@@ -377,12 +328,63 @@ def match_by_feature(src_path, label_path):
                          +','+str(value[3][0])+','+str(value[3][1])+'\n')
     f.close()
 
-    #f = open('./bound.txt', 'w')
-    #for item in bound_dict:
-        #value = all_matched_dict[item]
-        #f.write(str(item)+','+str(value[0])+','+str(value[1])
-                         #+','+str(value[2])+','+str(value[3])+'\n')
-    #f.close()
+def draw_info_by_matched(item, index, time_window_top2, original_img, max_mathed_kp, kp, max_bound_list, matched_name):
+    distance = 30
+    if index-distance in time_window_top2:
+        time_window_top2.pop(index-distance)
+    print ('after pop : ',time_window_top2)
+    label = []
+    for k in time_window_top2:
+        top1 = time_window_top2[k][0][0]
+        if top1 != 'None':
+            label.append(top1)
+        #top2 = time_window_top2[k][1][0]
+        #if top2 != 'None':
+        #    label.append(top2)
+    if len(label) == 0:
+        most_common = 'None'
+    else:
+        most_common = collections.Counter(label).most_common(1)[0][0]
+    #print ('label', label)
+    print ('most common:', most_common)
+    sum_most_common = 0
+    total = 0
+    common_count = 0
+    for k in time_window_top2:
+        total += time_window_top2[k][0][1]
+        #total += time_window_top2[k][1][1]
+        if time_window_top2[k][0][0] == most_common:
+            sum_most_common += time_window_top2[k][0][1]
+            common_count += 1
+        #if time_window_top2[k][1][0] == most_common:
+        #    sum_most_common += time_window_top2[k][1][1]
+    print (most_common, 'is ', sum_most_common, total, float(sum_most_common)/(total+1e-6))     
+    font=cv2.FONT_HERSHEY_SIMPLEX
+    cv2.putText(original_img, 'frame '+ str(index), (30,680),font,1, (0,0,255), 3)
+    if len(time_window_top2) == distance and float(sum_most_common)/(total+1e-6) > 0.75 and sum_most_common > 50 and common_count > distance*0.5:
+        print ('recongize as:', most_common)
+        font=cv2.FONT_HERSHEY_SIMPLEX
+        cv2.putText(original_img, most_common,  (1000,680),font,2, (0,0,255), 10)
+
+        if len(max_mathed_kp) == 0:
+            print ('feature point count is: 0')
+        else:
+            print ('feature point count is: ',len(max_mathed_kp[0]))
+            print ('feature name is: ', matched_name[:-4])
+            if len(max_mathed_kp[0]) >= 3:
+                for i in range(len(max_mathed_kp[0])):
+                    cv2.circle(original_img, (int(max_mathed_kp[0][i]), int(max_mathed_kp[1][i])), 10, (0,0,255), 3)      
+                for i in range(len(max_mathed_kp[0])):
+                    cv2.circle(original_img, (int(max_mathed_kp[0][i]), int(max_mathed_kp[1][i])), 10, (0,0,255), 3)      
+                font=cv2.FONT_HERSHEY_SIMPLEX
+                cv2.putText(original_img, matched_name[:-4]+':'+str(float(len(max_mathed_kp[0]))/len(kp[0]))[:5]
+                                    +'('+str(len(max_mathed_kp[0]))+')', (30,30),font,1, (0,0,255), 3)
+                for b in max_bound_list:
+                    cv2.rectangle(original_img,(int(b[0]),int(b[2])), (int(b[1]),int(b[3])), (0,255,0), 3)
+
+    print (FRAME_DIR+item)
+    cv2.imwrite(FRAME_DIR+item, original_img)
+    total_end = time.time()
 
 def test_by_label(src, label):
     img_src = cv2.imread(src)
@@ -454,7 +456,7 @@ def test_by_label(src, label):
 
 
 #split_to_frames('./data/VID_20190225_145649.mp4')
-#match_by_feature('./frames/', './label/')
+match_by_feature('./frames/', './label/')
 gen_video_from_frames(FRAME_DIR, './result/'+str(start_frame)+'_detect.avi')
 #test_by_label('./frames/frame_3815.jpg', './label/step_14.jpg')
 
